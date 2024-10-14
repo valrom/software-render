@@ -1,5 +1,5 @@
 [package]
-name = "pixeleted"
+name = "software-render"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,5 @@ edition = "2021"
 winit = "*"
 softbuffer = "*"
 image = "0.25.2"
+concat-idents = "1.1.5"
+num = "0.4.3"

@@ -1,18 +1,18 @@
 mod math;
+mod raster;
 mod triangles;
 
 use image::open;
 use image::ImageBuffer;
 use image::Rgb;
 use math::matrices::Matrix4;
-use math::matrices::Vector3;
-use math::matrices::Vector4;
-use math::VecF2;
-use math::VecI2;
+use math::vectors::Vector3;
+use math::vectors::Vector4;
+use raster::Triangle;
+use raster::TriangleIter;
 use std::ops::Add;
+use std::ops::Mul;
 use std::rc::Rc;
-use triangles::RasterTriangle;
-use triangles::Rasterizer;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
@@ -20,6 +20,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowAttributes;
 use winit::window::{Window, WindowId};
 
+use crate::math::vectors::Vector2;
 use softbuffer::Buffer;
 
 struct App {
@@ -136,7 +137,7 @@ impl State {
         let mut drawer = Drawer {
             size: self.size,
             buffer,
-            pixel_size: 4,
+            pixel_size: 2,
         };
 
         draw(&mut drawer);
@@ -245,45 +246,37 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::RedrawRequested => state.draw(|draw| {
-                let w = self.w as i32 / 4;
-                let h = self.h as i32 / 4;
+                let w = self.w as i32 / draw.pixel_size as i32;
+                let h = self.h as i32 / draw.pixel_size as i32;
 
-                let texture_cube = (
-                    (Vector3::new(-1.0, 1.0, 0.0), VecF2::new(0.0, 0.0)),
-                    (Vector3::new(1.0, 1.0, 0.0), VecF2::new(1.0, 0.0)),
-                    (Vector3::new(-1.0, -1.0, 0.0), VecF2::new(0.0, 1.0)),
-                    (Vector3::new(1.0, -1.0, 0.0), VecF2::new(1.0, 1.0)),
-                );
+                #[derive(Copy, Clone)]
+                struct Vertex {
+                    pub position: Vector4<f32>,
+                    pub color: Vector3<f32>,
+                    pub uv: Vector2<f32>,
+                }
 
-                let cube = (
-                    (
-                        Vector3::new(-1.0, 1.0, -1.0),
-                        Color::from_rgb(1.0, 0.0, 0.0),
-                    ),
-                    (Vector3::new(1.0, 1.0, -1.0), Color::from_rgb(0.0, 1.0, 0.0)),
-                    (
-                        Vector3::new(-1.0, -1.0, -1.0),
-                        Color::from_rgb(0.0, 0.0, 1.0),
-                    ),
-                    (
-                        Vector3::new(1.0, -1.0, -1.0),
-                        Color::from_rgb(0.4, 0.4, 0.4),
-                    ),
-                    (Vector3::new(-1.0, 1.0, 1.0), Color::from_rgb(0.5, 0.5, 0.5)),
-                    (Vector3::new(1.0, 1.0, 1.0), Color::from_rgb(0.6, 0.6, 0.6)),
-                    (
-                        Vector3::new(-1.0, -1.0, 1.0),
-                        Color::from_rgb(0.7, 0.7, 0.7),
-                    ),
-                    (Vector3::new(1.0, -1.0, 1.0), Color::from_rgb(0.8, 0.8, 0.8)),
-                );
+                impl Vertex {
+                    fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, u: f32, v: f32) -> Self {
+                        Self {
+                            position: Vector4::new(x, y, z, 1.0),
+                            color: Vector3::new(r, g, b),
+                            uv: Vector2::new(u, v),
+                        }
+                    }
+                }
+
+                let vertices = [
+                    Vertex::new(-1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+                    Vertex::new(1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),
+                    Vertex::new(1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+                    Vertex::new(-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0),
+                ];
+
+                let mesh = [(0, 1, 2), (2, 3, 0), (2, 1, 0), (0, 3, 2)];
 
                 let time = self.time.elapsed().unwrap().as_secs_f32();
-
-                let rotation = Matrix4::rotation_x(time);
-
-                let mut look = Matrix4::identity();
-                look.w.z = 2.0;
+                let rotate = Matrix4::<f32>::rotation_x(-time);
 
                 let aspect = if h != 0 && w != 0 {
                     w as f32 / h as f32
@@ -292,86 +285,68 @@ impl ApplicationHandler for App {
                 };
 
                 let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.1, 100.0);
-                let matrix = projection * look * rotation;
 
-                let _triangles = vec![
-                    (cube.0, cube.1, cube.2),
-                    (cube.2, cube.1, cube.3),
-                    (cube.1, cube.5, cube.3),
-                    (cube.5, cube.7, cube.3),
-                    (cube.0, cube.1, cube.4),
-                    (cube.1, cube.5, cube.4),
-                ];
+                let mut look = Matrix4::identity();
+                look.z.w = -1.5;
 
-                let textures = vec![
-                    (texture_cube.0, texture_cube.1, texture_cube.2),
-                    (texture_cube.2, texture_cube.1, texture_cube.3),
-                ];
+                let viewport = Matrix4::viewport(Vector2::new(w, h));
 
-                let triangles = textures
+                let matrix = viewport * projection * look * rotate;
+
+                let triangle_iter = mesh
                     .into_iter()
-                    .filter_map(|tri| {
-                        let ndc = (matrix * tri.0 .0, matrix * tri.1 .0, matrix * tri.2 .0);
-
-                        let ws = (ndc.0.w, ndc.1.w, ndc.2.w);
-
-                        let ndc = (ndc.0 / ws.0, ndc.1 / ws.1, ndc.2 / ws.2);
-
-                        let ndc_to_pixel_space = |vertex: Vector4| {
-                            Vector3::new(
-                                (vertex.x + 1.0) * w as f32 / 2.0,
-                                (1.0 - vertex.y) * h as f32 / 2.0,
-                                vertex.z,
-                            )
-                        };
-
-                        let screen_space = (
-                            ndc_to_pixel_space(ndc.0),
-                            ndc_to_pixel_space(ndc.1),
-                            ndc_to_pixel_space(ndc.2),
-                        );
-
-                        let pixel_space = (
-                            VecI2::new(screen_space.0.x as i32, screen_space.0.y as i32),
-                            VecI2::new(screen_space.1.x as i32, screen_space.1.y as i32),
-                            VecI2::new(screen_space.2.x as i32, screen_space.2.y as i32),
-                        );
-
-                        let raster_triangle: RasterTriangle = pixel_space.try_into().ok()?;
-                        let rasterizer: Rasterizer =
-                            Rasterizer::new_with_cropping(raster_triangle, (w, h).into())?;
-
-                        Some(((tri.0 .1, tri.1 .1, tri.2 .1), rasterizer))
+                    .map(|indecies| {
+                        (
+                            vertices[indecies.0],
+                            vertices[indecies.1],
+                            vertices[indecies.2],
+                        )
                     })
-                    .collect::<Vec<((VecF2, VecF2, VecF2), Rasterizer)>>();
+                    .filter_map(|triangle| {
+                        let ndc = [
+                            matrix * triangle.0.position,
+                            matrix * triangle.1.position,
+                            matrix * triangle.2.position,
+                        ];
 
-                for triangle in triangles {
-                    for pixel in triangle.1 {
-                        let coords = triangle.0 .0.scale(pixel.attributes.0)
-                            + triangle.0 .1.scale(pixel.attributes.1)
-                            + triangle.0 .2.scale(pixel.attributes.2);
+                        let iter = Triangle::new(ndc)?.into_iter();
+                        Some((iter, triangle))
+                    });
 
-                        let coords = (
-                            (coords.x * self.image.width() as f32) as u32,
-                            (coords.y * self.image.height() as f32) as u32,
-                        );
+                for (iter, triangle) in triangle_iter {
+                    for i in iter {
+                        if i.position.x > 0.0
+                            && i.position.x < w as f32
+                            && i.position.y > 0.0
+                            && i.position.y < h as f32
+                        {
+                            let color = triangle.0.color * i.coefs.x
+                                + triangle.1.color * i.coefs.y
+                                + triangle.2.color * i.coefs.z;
 
-                        let Some(color) = self.image.get_pixel_checked(coords.0, coords.1) else {
-                            continue;
-                        };
+                            let uvs = triangle.0.uv * i.coefs.x
+                                + triangle.1.uv * i.coefs.y
+                                + triangle.2.uv * i.coefs.z;
 
-                        let test = color.0;
+                            let texture = Vector2::new(
+                                uvs.x * self.image.width() as f32,
+                                uvs.y * self.image.height() as f32,
+                            );
 
-                        let final_color = 0xFF000000u32
-                            + test[2] as u32
-                            + ((test[1] as u32) << 8)
-                            + ((test[0] as u32) << 16);
+                            let Some(color) = self
+                                .image
+                                .get_pixel_checked(texture.x as u32, texture.y as u32)
+                            else {
+                                continue;
+                            };
 
-                        draw.draw_pixel(
-                            pixel.position.x as u32,
-                            pixel.position.y as u32,
-                            final_color,
-                        );
+                            let final_color = 0xFF000000u32
+                                + color.0[2] as u32
+                                + ((color.0[1] as u32) << 8)
+                                + ((color.0[0] as u32) << 16);
+
+                            draw.draw_pixel(i.position.x as u32, i.position.y as u32, final_color);
+                        }
                     }
                 }
             }),
@@ -391,7 +366,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let image = open("./textures/brick.png").unwrap().into_rgb8();
+    let image = open("./textures/brick.jpg").unwrap().into_rgb8();
 
     let mut app = App {
         state: None,

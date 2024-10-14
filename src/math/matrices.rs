@@ -1,258 +1,116 @@
-use std::ops::{Div, Mul};
+use std::convert::identity;
+use std::ops::Mul;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Vector3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
+use super::vectors::Vector4;
+use super::vectors::{Number, Vector2};
+
+#[derive(Copy, Clone, Debug)]
+pub struct Matrix4<T: Number<T>> {
+    pub x: Vector4<T>,
+    pub y: Vector4<T>,
+    pub z: Vector4<T>,
+    pub w: Vector4<T>,
 }
 
-impl Vector3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z }
+impl<T: Number<T>> Mul for Matrix4<T> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::new(
+            Vector4::new(
+                self.x.x * rhs.x.x + self.x.y * rhs.y.x + self.x.z * rhs.z.x * self.x.w * rhs.w.x,
+                self.x.x * rhs.x.y + self.x.y * rhs.y.y + self.x.z * rhs.z.y + self.x.w * rhs.w.y,
+                self.x.x * rhs.x.z + self.x.y * rhs.y.z + self.x.z * rhs.z.z + self.x.w * rhs.w.z,
+                self.x.x * rhs.x.w + self.x.y * rhs.y.w + self.x.z * rhs.z.w + self.x.w * rhs.w.w,
+            ),
+            Vector4::new(
+                self.y.x * rhs.x.x + self.y.y * rhs.y.x + self.y.z * rhs.z.x * self.y.w * rhs.w.x,
+                self.y.x * rhs.x.y + self.y.y * rhs.y.y + self.y.z * rhs.z.y + self.y.w * rhs.w.y,
+                self.y.x * rhs.x.z + self.y.y * rhs.y.z + self.y.z * rhs.z.z + self.y.w * rhs.w.z,
+                self.y.x * rhs.x.w + self.y.y * rhs.y.w + self.y.z * rhs.z.w + self.y.w * rhs.w.w,
+            ),
+            Vector4::new(
+                self.z.x * rhs.x.x + self.z.y * rhs.y.x + self.z.z * rhs.z.x * self.z.w * rhs.w.x,
+                self.z.x * rhs.x.y + self.z.y * rhs.y.y + self.z.z * rhs.z.y + self.z.w * rhs.w.y,
+                self.z.x * rhs.x.z + self.z.y * rhs.y.z + self.z.z * rhs.z.z + self.z.w * rhs.w.z,
+                self.z.x * rhs.x.w + self.z.y * rhs.y.w + self.z.z * rhs.z.w + self.z.w * rhs.w.w,
+            ),
+            Vector4::new(
+                self.w.x * rhs.x.x + self.w.y * rhs.y.x + self.w.z * rhs.z.x * self.w.w * rhs.w.x,
+                self.w.x * rhs.x.y + self.w.y * rhs.y.y + self.w.z * rhs.z.y + self.w.w * rhs.w.y,
+                self.w.x * rhs.x.z + self.w.y * rhs.y.z + self.w.z * rhs.z.z + self.w.w * rhs.w.z,
+                self.w.x * rhs.x.w + self.w.y * rhs.y.w + self.w.z * rhs.z.w + self.w.w * rhs.w.w,
+            ),
+        )
     }
 }
 
-impl From<(f32, f32, f32)> for Vector3 {
-    fn from(value: (f32, f32, f32)) -> Self {
-        Self::new(value.0, value.1, value.2)
+impl<T: Number<T>> Mul<Vector4<T>> for Matrix4<T> {
+    type Output = Vector4<T>;
+
+    fn mul(self, rhs: Vector4<T>) -> Self::Output {
+        Vector4::new(self.x * rhs, self.y * rhs, self.z * rhs, self.w * rhs)
     }
 }
 
-impl From<Vector4> for Vector3 {
-    fn from(value: Vector4) -> Vector3 {
-        Self::new(value.x, value.y, value.z)
-    }
-}
-
-impl From<Vector3> for Vector4 {
-    fn from(value: Vector3) -> Vector4 {
-        Self::from_xyz(value.x, value.y, value.z)
-    }
-}
-
-impl From<(f32, f32, f32, f32)> for Vector4 {
-    fn from(value: (f32, f32, f32, f32)) -> Vector4 {
-        Self::new(value.0, value.1, value.2, value.3)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Vector4 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub w: f32,
-}
-
-impl Vector4 {
-    pub fn from_xyz(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z, w: 1.0 }
-    }
-
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
-        Self { x, y, z, w }
-    }
-}
-
-impl Mul<Vector4> for Vector4 {
-    type Output = f32;
-
-    fn mul(self, rhs: Vector4) -> Self::Output {
-        self.x * rhs.x + self.y * rhs.y + self.z * rhs.z + self.w * rhs.w
-    }
-}
-
-impl Mul<f32> for Vector3 {
-    type Output = Vector3;
-
-    fn mul(self, rhs: f32) -> Self::Output {
-        Self::new(self.x * rhs, self.y * rhs, self.z * rhs)
-    }
-}
-
-impl Mul<f32> for Vector4 {
-    type Output = Vector4;
-
-    fn mul(self, rhs: f32) -> Self::Output {
-        Self::new(self.x * rhs, self.y * rhs, self.z * rhs, self.w * rhs)
-    }
-}
-
-impl Div<f32> for Vector3 {
-    type Output = Vector3;
-
-    fn div(self, rhs: f32) -> Self::Output {
-        self * (1.0 / rhs)
-    }
-}
-
-impl Div<f32> for Vector4 {
-    type Output = Vector4;
-
-    fn div(self, rhs: f32) -> Self::Output {
-        self * (1.0 / rhs)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Matrix4 {
-    pub x: Vector4,
-    pub y: Vector4,
-    pub z: Vector4,
-    pub w: Vector4,
-}
-
-impl Matrix4 {
-    pub fn new(x: Vector4, y: Vector4, z: Vector4, w: Vector4) -> Self {
+impl<T: Number<T>> Matrix4<T> {
+    pub fn new(x: Vector4<T>, y: Vector4<T>, z: Vector4<T>, w: Vector4<T>) -> Self {
         Self { x, y, z, w }
     }
 
     pub fn identity() -> Self {
-        (
-            (1.0, 0.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0, 0.0),
-            (0.0, 0.0, 1.0, 0.0),
-            (0.0, 0.0, 0.0, 1.0),
+        Self::new(
+            Vector4::new(T::one(), T::zero(), T::zero(), T::zero()),
+            Vector4::new(T::zero(), T::one(), T::zero(), T::zero()),
+            Vector4::new(T::zero(), T::zero(), T::one(), T::zero()),
+            Vector4::new(T::zero(), T::zero(), T::zero(), T::one()),
         )
-            .into()
     }
+}
 
+impl Matrix4<f32> {
     pub fn projection(aspect: f32, fov: f32, z_near: f32, z_far: f32) -> Self {
         let a = 1.0 / aspect;
         let f = 1.0 / (fov / 2.0).tan();
         let q = z_far / (z_far - z_near);
 
-        (
-            (a * f, 0.0, 0.0, 0.0),
-            (0.0, f, 0.0, 0.0),
-            (0.0, 0.0, q, -z_near * q),
-            (0.0, 0.0, 1.0f32, 0.0),
+        Self::new(
+            Vector4::new(a * f, 0.0, 0.0, 0.0),
+            Vector4::new(0.0, f, 0.0, 0.0),
+            Vector4::new(0.0, 0.0, q, z_near * q),
+            Vector4::new(0.0, 0.0, -1.0, 0.0),
         )
-            .into()
     }
 
     pub fn rotation_x(angle: f32) -> Self {
-        (
-            (1.0, 0.0, 0.0, 0.0),
-            (0.0, angle.cos(), angle.sin(), 0.0),
-            (0.0, -angle.sin(), angle.cos(), 0.0),
-            (0.0, 0.0, 0.0, 1.0),
+        Self::new(
+            Vector4::new(1.0, 0.0, 0.0, 0.0),
+            Vector4::new(0.0, angle.cos(), -angle.sin(), 0.0),
+            Vector4::new(0.0, angle.sin(), angle.cos(), 0.0),
+            Vector4::new(0.0, 0.0, 0.0, 1.0),
         )
-            .into()
     }
-}
 
-impl From<(Vector4, Vector4, Vector4, Vector4)> for Matrix4 {
-    fn from(value: (Vector4, Vector4, Vector4, Vector4)) -> Self {
-        Self::new(value.0, value.1, value.2, value.3)
-    }
-}
-
-impl
-    From<(
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-        (f32, f32, f32, f32),
-    )> for Matrix4
-{
-    fn from(
-        value: (
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-        ),
-    ) -> Self {
-        let matrix: (Vector4, Vector4, Vector4, Vector4) = (
-            value.0.into(),
-            value.1.into(),
-            value.2.into(),
-            value.3.into(),
-        );
-
-        matrix.into()
-    }
-}
-
-impl Mul<Matrix4> for Matrix4 {
-    type Output = Matrix4;
-
-    fn mul(self, rhs: Matrix4) -> Self::Output {
-        (
-            (
-                self.x * rhs.x,
-                self.x * rhs.y,
-                self.x * rhs.z,
-                self.x * rhs.w,
-            ),
-            (
-                self.y * rhs.x,
-                self.y * rhs.y,
-                self.y * rhs.z,
-                self.y * rhs.w,
-            ),
-            (
-                self.z * rhs.x,
-                self.z * rhs.y,
-                self.z * rhs.z,
-                self.z * rhs.w,
-            ),
-            (
-                self.w * rhs.x,
-                self.w * rhs.y,
-                self.w * rhs.z,
-                self.w * rhs.w,
-            ),
+    pub fn viewport(size: Vector2<i32>) -> Self {
+        Self::new(
+            Vector4::new(size.x as f32 / 2.0, 0.0, 0.0, size.x as f32 / 2.0),
+            Vector4::new(0.0, -size.y as f32 / 2.0, 0.0, size.y as f32 / 2.0),
+            Vector4::new(0.0, 0.0, 0.5, 0.5),
+            Vector4::new(0.0, 0.0, 0.0, 1.0),
         )
-            .into()
-    }
-}
-
-impl Mul<Vector4> for Matrix4 {
-    type Output = Vector4;
-
-    fn mul(self, rhs: Vector4) -> Self::Output {
-        (self.x * rhs, self.y * rhs, self.z * rhs, self.w * rhs).into()
-    }
-}
-
-impl Mul<Vector3> for Matrix4 {
-    type Output = Vector4;
-
-    fn mul(self, rhs: Vector3) -> Self::Output {
-        self * Vector4::from(rhs)
     }
 }
 
 #[test]
-fn check_vector34_matrix() {
-    let matrix = Matrix4::identity();
-    let vector = Vector3::new(1.0, 2.0, 3.0);
+fn test_polygon() {
+    let projection = Matrix4::<f32>::projection(1.0, 3.14 / 2.0, 0.1, 100.0);
+    let mut look = Matrix4::<f32>::identity();
+    look.z.w = -3.0;
 
-    assert_eq!(Vector4::new(1.0, 2.0, 3.0, 1.0), matrix * vector);
-}
+    let point = Vector4::new(1.0, 1.0, 0.0, 1.0);
 
-#[test]
-fn check_matrix_transform_identity() {
-    let matrix = Matrix4::identity();
-    let vector = Vector4::from_xyz(1.0, 2.0, 3.0);
+    let first = (projection * look) * point;
+    let second = projection * (look * point);
 
-    assert_eq!(vector, matrix * vector);
-}
-
-#[test]
-fn check_matrix_transform() {
-    let matrix: Matrix4 = (
-        (1.0f32, 0.0, 0.0, 0.0),
-        (0.0, 2.0f32, 0.0, 0.0),
-        (0.0, 0.0, 3.0f32, 0.0),
-        (0.0, 0.0, 0.0, 4.0f32),
-    )
-        .into();
-
-    let vector = Vector4::new(1.0, 2.0, 3.0, 4.0);
-
-    assert_eq!(Vector4::new(1.0, 4.0, 9.0, 16.0), matrix * vector);
+    assert_eq!(first, second);
 }
