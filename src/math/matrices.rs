@@ -1,4 +1,3 @@
-use std::convert::identity;
 use std::ops::Mul;
 
 use super::vectors::Vector4;

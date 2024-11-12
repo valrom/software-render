@@ -101,13 +101,13 @@ impl Iterator for Rect2Iter {
     }
 }
 
-fn test_iter() -> Rect2Iter {
+fn _test_iter() -> Rect2Iter {
     Rect2Iter::new(Rect2::new(Vector2::new(0.0, 0.0), Vector2::new(100.0, 100.0)).unwrap())
 }
 
 #[test]
 fn testing_iter() {
-    let mut iter = test_iter();
+    let mut iter = _test_iter();
 
     for _ in 0..=100 {
         iter.next();
@@ -117,7 +117,7 @@ fn testing_iter() {
 
 #[test]
 fn testing_iter_end() {
-    let mut iter = test_iter();
+    let mut iter = _test_iter();
 
     for _ in 1..=101 * 101 - 1 {
         iter.next();

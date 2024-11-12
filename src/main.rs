@@ -9,9 +9,7 @@ use math::matrices::Matrix4;
 use math::vectors::Vector3;
 use math::vectors::Vector4;
 use raster::Triangle;
-use raster::TriangleIter;
 use std::ops::Add;
-use std::ops::Mul;
 use std::rc::Rc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -320,7 +318,7 @@ impl ApplicationHandler for App {
                             && i.position.y > 0.0
                             && i.position.y < h as f32
                         {
-                            let color = triangle.0.color * i.coefs.x
+                            let _color = triangle.0.color * i.coefs.x
                                 + triangle.1.color * i.coefs.y
                                 + triangle.2.color * i.coefs.z;
 
