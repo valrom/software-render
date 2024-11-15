@@ -133,13 +133,13 @@ type Triplet4 = [Vector4<f32>; 3];
 pub struct Triangle {
     vertices: Triplet,
     segments: Triplet,
-    ws: [f32; 3],
+    ws: Vector3<f32>,
     rect: Rect2,
 }
 
 impl Triangle {
     pub fn new(vertices: Triplet4) -> Option<Self> {
-        let ws = [vertices[0].w, vertices[1].w, vertices[2].w];
+        let ws = Vector3::new(vertices[0].w, vertices[1].w, vertices[2].w);
 
         let vertices: [Vector3<f32>; 3] =
             [vertices[0].into(), vertices[1].into(), vertices[2].into()];
@@ -290,6 +290,7 @@ pub struct TriangleIter {
     crosses: [LinearInterpolator; 3],
     start: Vector2<f32>,
     triangle: Triangle,
+    zs: Vector3<f32>,
 }
 
 impl TriangleIter {
@@ -326,6 +327,11 @@ impl TriangleIter {
             crosses,
             start,
             triangle,
+            zs: Vector3::new(
+                triangle.vertices[0].z,
+                triangle.vertices[1].z,
+                triangle.vertices[2].z,
+            ),
         }
     }
 }
@@ -343,27 +349,26 @@ impl Iterator for TriangleIter {
             let position = Vector2::<f32>::new(position.x as f32, position.y as f32);
             let delta = position - self.start;
 
-            let mut cof2 = self.crosses[0].calc(delta.x, delta.y);
-            let mut cof0 = self.crosses[1].calc(delta.x, delta.y);
-            let mut cof1 = self.crosses[2].calc(delta.x, delta.y);
+            let cof2 = self.crosses[0].calc(delta.x, delta.y);
+            let cof0 = self.crosses[1].calc(delta.x, delta.y);
+            let cof1 = self.crosses[2].calc(delta.x, delta.y);
+
+            let mut coefs = Vector3::new(cof0, cof1, cof2);
 
             if cof0 > 0.0 && cof1 > 0.0 && cof2 > 0.0 {
-                cof0 /= self.triangle.ws[0];
-                cof1 /= self.triangle.ws[1];
-                cof2 /= self.triangle.ws[2];
+                coefs.x /= self.triangle.ws.x;
+                coefs.y /= self.triangle.ws.y;
+                coefs.z /= self.triangle.ws.z;
 
-                let sum = cof0 + cof1 + cof2;
-                let cof0 = cof0 / sum;
-                let cof1 = cof1 / sum;
-                let cof2 = cof2 / sum;
+                let sum = coefs.x + coefs.y + coefs.z;
 
-                let z = cof0 * self.triangle.vertices[0].z
-                    + cof1 * self.triangle.vertices[1].z
-                    + cof2 * self.triangle.vertices[2].z;
+                coefs = coefs / sum;
+
+                let z = coefs * self.zs;
 
                 Some(Fragment {
                     position: Vector3::<f32>::new(position.x, position.y, z),
-                    coefs: Vector3::new(cof0, cof1, cof2),
+                    coefs,
                 })
             } else {
                 None

@@ -291,40 +291,41 @@ impl ApplicationHandler for App {
 
                 let matrix = viewport * projection * look * rotate;
 
-                let triangle_iter = mesh
-                    .into_iter()
-                    .map(|indecies| {
-                        (
-                            vertices[indecies.0],
-                            vertices[indecies.1],
-                            vertices[indecies.2],
-                        )
-                    })
-                    .filter_map(|triangle| {
-                        let ndc = [
-                            matrix * triangle.0.position,
-                            matrix * triangle.1.position,
-                            matrix * triangle.2.position,
-                        ];
+                let triangle_iter = mesh.into_iter().filter_map(|indices| {
+                    let triangle = (
+                        vertices[indices.0],
+                        vertices[indices.1],
+                        vertices[indices.2],
+                    );
 
-                        let iter = Triangle::new(ndc)?.into_iter();
-                        Some((iter, triangle))
-                    });
+                    let ndc = [
+                        matrix * triangle.0.position,
+                        matrix * triangle.1.position,
+                        matrix * triangle.2.position,
+                    ];
+
+                    let iter = Triangle::new(ndc)?.into_iter();
+                    Some((iter, triangle))
+                });
 
                 for (iter, triangle) in triangle_iter {
-                    for i in iter {
-                        if i.position.x > 0.0
-                            && i.position.x < w as f32
-                            && i.position.y > 0.0
-                            && i.position.y < h as f32
+                    for frag in iter {
+                        if frag.position.x > 0.0
+                            && frag.position.x < w as f32
+                            && frag.position.y > 0.0
+                            && frag.position.y < h as f32
                         {
-                            let _color = triangle.0.color * i.coefs.x
-                                + triangle.1.color * i.coefs.y
-                                + triangle.2.color * i.coefs.z;
+                            let _color = frag.coefs.interpolate((
+                                triangle.0.color,
+                                triangle.1.color,
+                                triangle.2.color,
+                            ));
 
-                            let uvs = triangle.0.uv * i.coefs.x
-                                + triangle.1.uv * i.coefs.y
-                                + triangle.2.uv * i.coefs.z;
+                            let uvs = frag.coefs.interpolate((
+                                triangle.0.uv,
+                                triangle.1.uv,
+                                triangle.2.uv,
+                            ));
 
                             let texture = Vector2::new(
                                 uvs.x * self.image.width() as f32,
@@ -343,7 +344,11 @@ impl ApplicationHandler for App {
                                 + ((color.0[1] as u32) << 8)
                                 + ((color.0[0] as u32) << 16);
 
-                            draw.draw_pixel(i.position.x as u32, i.position.y as u32, final_color);
+                            draw.draw_pixel(
+                                frag.position.x as u32,
+                                frag.position.y as u32,
+                                final_color,
+                            );
                         }
                     }
                 }

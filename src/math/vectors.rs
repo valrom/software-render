@@ -87,6 +87,13 @@ impl<T: Number<T>> Vector3<T> {
             self.x * rhs.y - self.y * rhs.x,
         )
     }
+
+    pub fn interpolate<I: Copy + Clone + Mul<T, Output = I> + Add<I, Output = I>>(
+        self,
+        value: (I, I, I),
+    ) -> I {
+        value.0 * self.x + value.1 * self.y + value.2 * self.z
+    }
 }
 
 impl<T: Number<T>> Add for Vector3<T> {
