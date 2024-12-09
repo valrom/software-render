@@ -1,3 +1,4 @@
+mod buffers;
 mod math;
 mod raster;
 mod triangles;
@@ -27,69 +28,6 @@ struct App {
     h: u32,
     time: std::time::SystemTime,
     image: ImageBuffer<Rgb<u8>, Vec<u8>>,
-}
-
-#[allow(dead_code)]
-struct RenderContext {
-    width: u32,
-    height: u32,
-
-    framebuffer: Vec<u32>,
-    depthbuffer: Vec<u8>,
-}
-
-#[allow(dead_code)]
-impl RenderContext {
-    fn new(width: u32, height: u32) -> Self {
-        Self {
-            width,
-            height,
-            framebuffer: vec![0; (width * height) as usize],
-            depthbuffer: vec![u8::max_value(); (width * height) as usize],
-        }
-    }
-
-    fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.width = new_size.width;
-        self.height = new_size.height;
-
-        self.framebuffer = vec![0; (self.width * self.height) as usize];
-        self.depthbuffer = vec![0; (self.width * self.height) as usize];
-    }
-
-    fn clean(&mut self, color: u32) {
-        self.framebuffer.fill(color);
-        self.depthbuffer.fill(u8::max_value());
-    }
-
-    fn draw(&mut self, x: u32, y: u32, z: u8, color: u32) -> bool {
-        if x >= self.width || y >= self.height {
-            return false;
-        }
-
-        let depth = self.depthbuffer.get_mut((y * self.width + x) as usize);
-        let Some(depth) = depth else {
-            return false;
-        };
-
-        if z > *depth {
-            return false;
-        }
-
-        let write_color = self.framebuffer.get_mut((y * self.width + x) as usize);
-        let Some(write_color) = write_color else {
-            return false;
-        };
-
-        *depth = z;
-        *write_color = color;
-
-        true
-    }
-
-    fn framebuffer(&self) -> &[u32] {
-        self.framebuffer.as_ref()
-    }
 }
 
 struct State {
