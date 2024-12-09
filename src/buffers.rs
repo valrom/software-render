@@ -6,7 +6,7 @@ pub struct Buffer<T> {
 }
 
 impl<T: Copy + Clone> Buffer<T> {
-    fn new(size: Vector2<i32>, init: T) -> Option<Self> {
+    pub fn new(size: Vector2<i32>, init: T) -> Option<Self> {
         if size.x <= 0 || size.y <= 0 {
             return None;
         }
@@ -17,16 +17,24 @@ impl<T: Copy + Clone> Buffer<T> {
         })
     }
 
-    fn set_pixel(&mut self, position: Vector2<i32>, value: T) {
+    pub fn set_pixel(&mut self, position: Vector2<i32>, value: T) {
         self.data[(position.x + position.y * self.size.x) as usize] = value;
     }
 
-    fn get_pixel(&mut self, position: Vector2<i32>) -> T {
+    pub fn get_pixel(&self, position: Vector2<i32>) -> T {
         self.data[(position.x + position.y * self.size.x) as usize]
     }
 
-    fn clear(&mut self, value: T) {
+    pub fn clear(&mut self, value: T) {
         self.data.fill(value);
+    }
+
+    pub fn width(&self) -> u32 {
+        self.size.x as u32
+    }
+
+    pub fn height(&self) -> u32 {
+        self.size.y as u32
     }
 }
 

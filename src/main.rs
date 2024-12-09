@@ -3,14 +3,10 @@ mod math;
 mod raster;
 mod triangles;
 
+use buffers::Buffer;
 use image::open;
 use image::ImageBuffer;
 use image::Rgb;
-use math::matrices::Matrix4;
-use math::vectors::Vector3;
-use math::vectors::Vector4;
-use raster::Triangle;
-use std::ops::Add;
 use std::rc::Rc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -20,14 +16,14 @@ use winit::window::WindowAttributes;
 use winit::window::{Window, WindowId};
 
 use crate::math::vectors::Vector2;
-use softbuffer::Buffer;
 
 struct App {
     state: Option<State>,
-    w: u32,
-    h: u32,
+    buffer: Buffer<u32>,
+
     time: std::time::SystemTime,
     image: ImageBuffer<Rgb<u8>, Vec<u8>>,
+    scale: u32,
 }
 
 struct State {
@@ -65,54 +61,18 @@ impl State {
             .unwrap();
     }
 
-    fn draw<F>(&mut self, draw: F)
-    where
-        F: Fn(&mut Drawer),
-    {
-        let buffer = self.surface.buffer_mut().unwrap();
-        let mut drawer = Drawer {
-            size: self.size,
-            buffer,
-            pixel_size: 2,
-        };
+    pub fn draw(&mut self, framebuffer: &Buffer<u32>, scale: u32) {
+        let mut buffer = self.surface.buffer_mut().unwrap();
 
-        draw(&mut drawer);
-        Self::update(&self.window, drawer.buffer)
-    }
-
-    fn update(window: &Rc<Window>, buffer: Buffer<Rc<Window>, Rc<Window>>) {
-        buffer.present().unwrap();
-        window.request_redraw();
-    }
-}
-
-struct Drawer<'a> {
-    buffer: Buffer<'a, Rc<Window>, Rc<Window>>,
-    size: PhysicalSize<u32>,
-    pixel_size: u32,
-}
-
-impl<'a> Drawer<'a> {
-    fn draw_pixel(&mut self, x: u32, y: u32, color: u32) -> bool {
-        let begin_x = x * self.pixel_size;
-        let begin_y = y * self.pixel_size;
-
-        if begin_x >= self.size.width - self.pixel_size
-            || begin_y >= self.size.height - self.pixel_size
-        {
-            return false;
-        }
-
-        let range_x = begin_x..begin_x + self.pixel_size;
-        let range_y = begin_y..begin_y + self.pixel_size;
-
-        for x in range_x {
-            for y in range_y.clone() {
-                self.buffer[(y * self.size.width + x) as usize] = color;
+        for y in 0..std::cmp::min(framebuffer.height() * scale, self.size.height) {
+            for x in 0..std::cmp::min(framebuffer.width() * scale, self.size.width) {
+                buffer[(self.size.width * y + x) as usize] =
+                    framebuffer.get_pixel(Vector2::new(x as i32, y as i32) / scale as i32)
             }
         }
 
-        true
+        buffer.present().unwrap();
+        self.window.request_redraw();
     }
 }
 
@@ -147,20 +107,6 @@ impl Color {
     }
 }
 
-impl Add<Color> for Color {
-    type Output = Color;
-
-    fn add(self, another: Self) -> Self {
-        Self {
-            r: (self.r + another.r) / 2.0,
-            g: (self.g + another.g) / 2.0,
-            b: (self.b + another.b) / 2.0,
-
-            a: (self.a + another.a) / 2.0,
-        }
-    }
-}
-
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = make_window(event_loop);
@@ -181,121 +127,24 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
 
-            WindowEvent::RedrawRequested => state.draw(|draw| {
-                let w = self.w as i32 / draw.pixel_size as i32;
-                let h = self.h as i32 / draw.pixel_size as i32;
-
-                #[derive(Copy, Clone)]
-                struct Vertex {
-                    pub position: Vector4<f32>,
-                    pub color: Vector3<f32>,
-                    pub uv: Vector2<f32>,
-                }
-
-                impl Vertex {
-                    fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, u: f32, v: f32) -> Self {
-                        Self {
-                            position: Vector4::new(x, y, z, 1.0),
-                            color: Vector3::new(r, g, b),
-                            uv: Vector2::new(u, v),
-                        }
-                    }
-                }
-
-                let vertices = [
-                    Vertex::new(-1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0),
-                    Vertex::new(1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),
-                    Vertex::new(1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
-                    Vertex::new(-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0),
-                ];
-
-                let mesh = [(0, 1, 2), (2, 3, 0), (2, 1, 0), (0, 3, 2)];
-
-                let time = self.time.elapsed().unwrap().as_secs_f32();
-                let rotate = Matrix4::<f32>::rotation_x(-time);
-
-                let aspect = if h != 0 && w != 0 {
-                    w as f32 / h as f32
-                } else {
-                    1.0
-                };
-
-                let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.1, 100.0);
-
-                let mut look = Matrix4::identity();
-                look.z.w = -1.5;
-
-                let viewport = Matrix4::viewport(Vector2::new(w, h));
-
-                let matrix = viewport * projection * look * rotate;
-
-                let triangle_iter = mesh.into_iter().filter_map(|indices| {
-                    let triangle = (
-                        vertices[indices.0],
-                        vertices[indices.1],
-                        vertices[indices.2],
-                    );
-
-                    let ndc = [
-                        matrix * triangle.0.position,
-                        matrix * triangle.1.position,
-                        matrix * triangle.2.position,
-                    ];
-
-                    let iter = Triangle::new(ndc)?.into_iter();
-                    Some((iter, triangle))
-                });
-
-                for (iter, triangle) in triangle_iter {
-                    for frag in iter {
-                        if frag.position.x > 0.0
-                            && frag.position.x < w as f32
-                            && frag.position.y > 0.0
-                            && frag.position.y < h as f32
-                        {
-                            let _color = frag.coefs.interpolate((
-                                triangle.0.color,
-                                triangle.1.color,
-                                triangle.2.color,
-                            ));
-
-                            let uvs = frag.coefs.interpolate((
-                                triangle.0.uv,
-                                triangle.1.uv,
-                                triangle.2.uv,
-                            ));
-
-                            let texture = Vector2::new(
-                                uvs.x * self.image.width() as f32,
-                                uvs.y * self.image.height() as f32,
-                            );
-
-                            let Some(color) = self
-                                .image
-                                .get_pixel_checked(texture.x as u32, texture.y as u32)
-                            else {
-                                continue;
-                            };
-
-                            let final_color = 0xFF000000u32
-                                + color.0[2] as u32
-                                + ((color.0[1] as u32) << 8)
-                                + ((color.0[0] as u32) << 16);
-
-                            draw.draw_pixel(
-                                frag.position.x as u32,
-                                frag.position.y as u32,
-                                final_color,
-                            );
-                        }
-                    }
-                }
-            }),
+            WindowEvent::RedrawRequested => {
+                state.draw(&self.buffer, self.scale);
+            }
 
             WindowEvent::Resized(size) => {
+                if size.width / self.scale == 0 || size.height / self.scale == 0 {
+                    return;
+                }
+
                 state.resize(size);
-                self.w = size.width;
-                self.h = size.height;
+                self.buffer = Buffer::new(
+                    Vector2::new(
+                        (size.width / self.scale) as i32,
+                        (size.height / self.scale) as i32,
+                    ),
+                    0xFFFFFFFFu32,
+                )
+                .unwrap();
             }
 
             _ => (),
@@ -311,8 +160,8 @@ fn main() {
 
     let mut app = App {
         state: None,
-        w: 0,
-        h: 0,
+        scale: 4,
+        buffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
         time: std::time::SystemTime::now(),
         image,
     };
