@@ -366,6 +366,11 @@ impl Iterator for TriangleIter {
 
                 let z = coefs * self.zs;
 
+
+                let calc_z = coefs.interpolate(
+                    (self.zs.x, self.zs.y, self.zs.z)
+                );
+
                 Some(Fragment {
                     position: Vector3::<f32>::new(position.x, position.y, z),
                     coefs,

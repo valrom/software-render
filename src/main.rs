@@ -4,7 +4,7 @@ mod raster;
 mod triangles;
 
 use buffers::Buffer;
-use image::open;
+use image::{open, Pixel};
 use image::ImageBuffer;
 use image::Rgb;
 use math::matrices::Matrix4;
@@ -23,7 +23,9 @@ use crate::math::vectors::Vector2;
 
 struct App {
     state: Option<State>,
-    buffer: Buffer<u32>,
+
+    framebuffer: Buffer<u32>,
+    depth: Buffer<i32>,
 
     time: std::time::SystemTime,
     image: ImageBuffer<Rgb<u8>, Vec<u8>>,
@@ -111,6 +113,18 @@ impl Color {
     }
 }
 
+impl From<Rgb<u8>> for Color {
+    fn from(rgb: Rgb<u8>) -> Self {
+        Self::from_rgb(rgb[0] as f32 * 255.0, rgb[1] as f32 * 255.0, rgb[2] as f32 * 255.0)
+    }
+}
+
+impl From<Color> for Vector3<f32> {
+    fn from(color: Color) -> Self {
+        Self::new(color.r, color.g, color.b)
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = make_window(event_loop);
@@ -136,7 +150,7 @@ impl ApplicationHandler for App {
 
             WindowEvent::RedrawRequested => {
                 self.draw();
-                state.draw(&self.buffer, self.scale);
+                state.draw(&self.framebuffer, self.scale);
             }
 
             WindowEvent::Resized(size) => {
@@ -149,7 +163,8 @@ impl ApplicationHandler for App {
                     (size.height / self.scale) as i32,
                 );
                 state.resize(size);
-                self.buffer = Buffer::new(size_vec, 0xFFFFFFFFu32).unwrap();
+                self.framebuffer = Buffer::new(size_vec, 0xFFFFFFFFu32).unwrap();
+                self.depth = Buffer::new(size_vec, 0).unwrap();
             }
 
             _ => (),
@@ -161,6 +176,9 @@ impl ApplicationHandler for App {
 
 impl App {
     fn draw(&mut self) {
+        self.framebuffer.clear(0xFFFFFFFF);
+        self.depth.clear(i32::MAX);
+
         #[derive(Copy, Clone)]
         struct Vertex {
             pub position: Vector4<f32>,
@@ -178,41 +196,98 @@ impl App {
             }
         }
 
-        let vertices = [
-            Vertex::new(-1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0),
-            Vertex::new(1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),
-            Vertex::new(1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
-            Vertex::new(-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0),
+        let cube = [
+            Vector3::new(-1.0, 1.0, -1.0),
+            Vector3::new(1.0, 1.0, -1.0),
+            Vector3::new(-1.0, 1.0, 1.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(-1.0, -1.0, -1.0),
+            Vector3::new(1.0, -1.0, -1.0),
+            Vector3::new(-1.0, -1.0, 1.0),
+            Vector3::new(1.0, -1.0, 1.0),
         ];
 
-        let mesh = [(0, 1, 2), (2, 3, 0), (2, 1, 0), (0, 3, 2)];
+        let uvs = [
+            Vector2::new(0.0, 0.0),
+            Vector2::new(1.0, 0.0),
+            Vector2::new(0.0, 1.0),
+            Vector2::new(1.0, 1.0),
+        ];
+
+        pub struct Index {
+            pub position: usize,
+            pub uv: usize,
+            pub color: Color,
+        }
+
+        impl Index {
+            fn new(position: usize, uv: usize, color: Color) -> Self {
+                Self { position, uv, color }
+            }
+        }
+
+        fn quad(indexs: [usize; 4], color: Color) -> [(Index, Index, Index); 2] {
+            [
+                (
+                    Index::new(indexs[0], 0, color),
+                    Index::new(indexs[1], 1, color),
+                    Index::new(indexs[2], 2, color),
+                ),
+                (
+                    Index::new(indexs[2], 2, color),
+                    Index::new(indexs[1], 1, color),
+                    Index::new(indexs[3], 3, color),
+                ),
+            ]
+        }
+
+        let quads = [
+            quad([2, 3, 4, 5], Color::from_rgb(1.0, 0.0, 0.0)),
+            quad([3, 2, 5, 4], Color::from_rgb(1.0, 0.0, 0.0)),
+            quad([0, 1, 6, 7], Color::from_rgb(0.0, 1.0, 0.0)),
+            quad([1, 0, 7, 6], Color::from_rgb(0.0, 1.0, 0.0)),
+        ];
+
+        let mesh = quads.as_flattened();
 
         let time = self.time.elapsed().unwrap().as_secs_f32();
         let rotate = Matrix4::<f32>::rotation_x(-time);
 
-        let aspect = if self.buffer.width() != 0 && self.buffer.height() != 0 {
-            self.buffer.width() as f32 / self.buffer.height() as f32
+        let aspect = if self.framebuffer.width() != 0 && self.framebuffer.height() != 0 {
+            self.framebuffer.width() as f32 / self.framebuffer.height() as f32
         } else {
             1.0
         };
 
-        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.1, 100.0);
+        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.1, 2.0);
 
         let mut look = Matrix4::identity();
-        look.z.w = -1.5;
+        look.z.w = -3.0;
 
         let viewport = Matrix4::viewport(Vector2::new(
-            self.buffer.width() as i32,
-            self.buffer.height() as i32,
+            self.framebuffer.width() as i32,
+            self.framebuffer.height() as i32,
         ));
 
-        let matrix = viewport * projection * look * rotate;
+        let matrix = viewport * projection * look; // * rotate;
 
         let triangle_iter = mesh.into_iter().filter_map(|indices| {
             let triangle = (
-                vertices[indices.0],
-                vertices[indices.1],
-                vertices[indices.2],
+                Vertex {
+                    position: cube[indices.0.position].into(),
+                    color: indices.0.color.into(),
+                    uv: uvs[indices.0.uv],
+                },
+                Vertex {
+                    position: cube[indices.1.position].into(),
+                    color: indices.0.color.into(),
+                    uv: uvs[indices.1.uv],
+                },
+                Vertex {
+                    position: cube[indices.2.position].into(),
+                    color: indices.0.color.into(),
+                    uv: uvs[indices.2.uv],
+                },
             );
 
             let ndc = [
@@ -228,11 +303,24 @@ impl App {
         for (iter, triangle) in triangle_iter {
             for frag in iter {
                 if frag.position.x > 0.0
-                    && frag.position.x < self.buffer.width() as f32
+                    && frag.position.x < self.framebuffer.width() as f32
                     && frag.position.y > 0.0
-                    && frag.position.y < self.buffer.height() as f32
+                    && frag.position.y < self.framebuffer.height() as f32
                 {
-                    let _color = frag.coefs.interpolate((
+                    let pixel_pos = Vector2::new(frag.position.x as i32, frag.position.y as i32);
+                    let depth = ( (frag.position.z / 2.0) * i32::max_value() as f32) as i32;
+
+                    let get_depth = self.depth.get_pixel(pixel_pos);
+
+                    if get_depth < depth {
+                        continue;
+                    }
+
+                    dbg!(get_depth, depth);
+
+                    self.depth.set_pixel(pixel_pos, depth);
+
+                    let color = frag.coefs.interpolate((
                         triangle.0.color,
                         triangle.1.color,
                         triangle.2.color,
@@ -247,22 +335,14 @@ impl App {
                         uvs.y * self.image.height() as f32,
                     );
 
-                    let Some(color) = self
+                    let Some(texture) = self
                         .image
                         .get_pixel_checked(texture.x as u32, texture.y as u32)
                     else {
                         continue;
                     };
 
-                    let final_color = 0xFF000000u32
-                        + color.0[2] as u32
-                        + ((color.0[1] as u32) << 8)
-                        + ((color.0[0] as u32) << 16);
-
-                    self.buffer.set_pixel(
-                        Vector2::new(frag.position.x as i32, frag.position.y as i32),
-                        final_color,
-                    );
+                    self.framebuffer.set_pixel(pixel_pos, Color::from_rgb(color.x, color.y, color.z).to_u32());
                 }
             }
         }
@@ -277,8 +357,9 @@ fn main() {
 
     let mut app = App {
         state: None,
-        scale: 2,
-        buffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
+        scale: 4,
+        framebuffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
+        depth: Buffer::new(Vector2::new(100, 100), 0).unwrap(),
         time: std::time::SystemTime::now(),
         image,
     };

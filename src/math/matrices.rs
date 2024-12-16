@@ -113,3 +113,14 @@ fn test_polygon() {
 
     assert_eq!(first, second);
 }
+
+#[test]
+fn projection_test() {
+    let projection = Matrix4::<f32>::projection(1.0, 3.14 / 2.0, 1.0, 100.0);
+
+    let point = Vector4::new(1.0, 1.0, -2.0, 1.0);
+
+    let projected = projection * point;
+
+    assert_eq!(projected.z / projected.w, -0.5);
+}
