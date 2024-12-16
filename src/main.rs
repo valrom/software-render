@@ -25,7 +25,7 @@ struct App {
     state: Option<State>,
 
     framebuffer: Buffer<u32>,
-    depth: Buffer<i32>,
+    depth: Buffer<f32>,
 
     time: std::time::SystemTime,
     image: ImageBuffer<Rgb<u8>, Vec<u8>>,
@@ -97,10 +97,10 @@ impl Color {
     }
 
     fn to_u32(self) -> u32 {
-        0x01000000 * (self.a * 255.0).trunc() as u32
-            + 0x00010000 * (self.r * 255.0).trunc() as u32
-            + 0x00000100 * (self.g * 255.0).trunc() as u32
-            + 0x00000001 * (self.b * 255.0).trunc() as u32
+        0x01000000 * ((self.a * 255.0).trunc() as u32  % 256)
+            + 0x00010000 * ((self.r * 255.0).trunc() as u32 % 256)
+            + 0x00000100 * ((self.g * 255.0).trunc() as u32 % 256)
+            + 0x00000001 * ((self.b * 255.0).trunc() as u32 % 256)
     }
 
     fn scale(self, factor: f32) -> Self {
@@ -115,7 +115,7 @@ impl Color {
 
 impl From<Rgb<u8>> for Color {
     fn from(rgb: Rgb<u8>) -> Self {
-        Self::from_rgb(rgb[0] as f32 * 255.0, rgb[1] as f32 * 255.0, rgb[2] as f32 * 255.0)
+        Self::from_rgb(rgb[0] as f32 / 255.0, rgb[1] as f32 / 255.0, rgb[2] as f32 / 255.0)
     }
 }
 
@@ -164,7 +164,7 @@ impl ApplicationHandler for App {
                 );
                 state.resize(size);
                 self.framebuffer = Buffer::new(size_vec, 0xFFFFFFFFu32).unwrap();
-                self.depth = Buffer::new(size_vec, 0).unwrap();
+                self.depth = Buffer::new(size_vec, -1.0).unwrap();
             }
 
             _ => (),
@@ -177,7 +177,7 @@ impl ApplicationHandler for App {
 impl App {
     fn draw(&mut self) {
         self.framebuffer.clear(0xFFFFFFFF);
-        self.depth.clear(i32::MAX);
+        self.depth.clear(-1.0);
 
         #[derive(Copy, Clone)]
         struct Vertex {
@@ -259,7 +259,7 @@ impl App {
             1.0
         };
 
-        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.1, 2.0);
+        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.01, 1.0);
 
         let mut look = Matrix4::identity();
         look.z.w = -3.0;
@@ -269,7 +269,7 @@ impl App {
             self.framebuffer.height() as i32,
         ));
 
-        let matrix = viewport * projection * look; // * rotate;
+        let matrix = viewport * projection * look * rotate;
 
         let triangle_iter = mesh.into_iter().filter_map(|indices| {
             let triangle = (
@@ -306,17 +306,17 @@ impl App {
                     && frag.position.x < self.framebuffer.width() as f32
                     && frag.position.y > 0.0
                     && frag.position.y < self.framebuffer.height() as f32
+                    && frag.position.z < 0.0
+                    && frag.position.z > -1.0
                 {
                     let pixel_pos = Vector2::new(frag.position.x as i32, frag.position.y as i32);
-                    let depth = ( (frag.position.z / 2.0) * i32::max_value() as f32) as i32;
+                    let depth = frag.position.z;
 
                     let get_depth = self.depth.get_pixel(pixel_pos);
 
-                    if get_depth < depth {
+                    if get_depth > depth {
                         continue;
                     }
-
-                    dbg!(get_depth, depth);
 
                     self.depth.set_pixel(pixel_pos, depth);
 
@@ -343,6 +343,7 @@ impl App {
                     };
 
                     self.framebuffer.set_pixel(pixel_pos, Color::from_rgb(color.x, color.y, color.z).to_u32());
+                    // self.framebuffer.set_pixel(pixel_pos, Color::from(*texture).to_u32());
                 }
             }
         }
@@ -357,9 +358,9 @@ fn main() {
 
     let mut app = App {
         state: None,
-        scale: 4,
+        scale: 2,
         framebuffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
-        depth: Buffer::new(Vector2::new(100, 100), 0).unwrap(),
+        depth: Buffer::new(Vector2::new(100, 100), 0.0).unwrap(),
         time: std::time::SystemTime::now(),
         image,
     };
