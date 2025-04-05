@@ -4,13 +4,14 @@ mod raster;
 mod triangles;
 
 use buffers::Buffer;
-use image::{open, Pixel};
+use image::open;
 use image::ImageBuffer;
 use image::Rgb;
 use math::matrices::Matrix4;
 use math::vectors::Vector3;
 use math::vectors::Vector4;
 use raster::Triangle;
+use std::collections::HashSet;
 use std::rc::Rc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -97,7 +98,7 @@ impl Color {
     }
 
     fn to_u32(self) -> u32 {
-        0x01000000 * ((self.a * 255.0).trunc() as u32  % 256)
+        0x01000000 * ((self.a * 255.0).trunc() as u32 % 256)
             + 0x00010000 * ((self.r * 255.0).trunc() as u32 % 256)
             + 0x00000100 * ((self.g * 255.0).trunc() as u32 % 256)
             + 0x00000001 * ((self.b * 255.0).trunc() as u32 % 256)
@@ -115,7 +116,11 @@ impl Color {
 
 impl From<Rgb<u8>> for Color {
     fn from(rgb: Rgb<u8>) -> Self {
-        Self::from_rgb(rgb[0] as f32 / 255.0, rgb[1] as f32 / 255.0, rgb[2] as f32 / 255.0)
+        Self::from_rgb(
+            rgb[0] as f32 / 255.0,
+            rgb[1] as f32 / 255.0,
+            rgb[2] as f32 / 255.0,
+        )
     }
 }
 
@@ -222,7 +227,11 @@ impl App {
 
         impl Index {
             fn new(position: usize, uv: usize, color: Color) -> Self {
-                Self { position, uv, color }
+                Self {
+                    position,
+                    uv,
+                    color,
+                }
             }
         }
 
@@ -242,8 +251,8 @@ impl App {
         }
 
         let quads = [
-            quad([2, 3, 4, 5], Color::from_rgb(1.0, 0.0, 0.0)),
-            quad([3, 2, 5, 4], Color::from_rgb(1.0, 0.0, 0.0)),
+            quad([0, 2, 7, 5], Color::from_rgb(1.0, 0.0, 0.0)),
+            quad([2, 0, 5, 7], Color::from_rgb(1.0, 0.0, 0.0)),
             quad([0, 1, 6, 7], Color::from_rgb(0.0, 1.0, 0.0)),
             quad([1, 0, 7, 6], Color::from_rgb(0.0, 1.0, 0.0)),
         ];
@@ -259,7 +268,7 @@ impl App {
             1.0
         };
 
-        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.01, 1.0);
+        let projection = Matrix4::projection(aspect, 3.14 / 2.0, 0.01, 0.2);
 
         let mut look = Matrix4::identity();
         look.z.w = -3.0;
@@ -300,6 +309,8 @@ impl App {
             Some((iter, triangle))
         });
 
+        let mut values = HashSet::new();
+
         for (iter, triangle) in triangle_iter {
             for frag in iter {
                 if frag.position.x > 0.0
@@ -317,6 +328,8 @@ impl App {
                     if get_depth > depth {
                         continue;
                     }
+
+                    values.insert((depth * 10000.0) as i32);
 
                     self.depth.set_pixel(pixel_pos, depth);
 
@@ -342,11 +355,20 @@ impl App {
                         continue;
                     };
 
-                    self.framebuffer.set_pixel(pixel_pos, Color::from_rgb(color.x, color.y, color.z).to_u32());
+                    self.framebuffer.set_pixel(
+                        pixel_pos,
+                        Color::from_rgb(color.x, color.y, color.z).to_u32(),
+                    );
                     // self.framebuffer.set_pixel(pixel_pos, Color::from(*texture).to_u32());
                 }
             }
         }
+
+        println!(
+            "Max: {}, min: {}",
+            values.iter().max().unwrap(),
+            values.iter().min().unwrap()
+        );
     }
 }
 
