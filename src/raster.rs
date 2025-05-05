@@ -134,12 +134,14 @@ pub struct Triangle {
     vertices: Triplet,
     segments: Triplet,
     ws: Vector3<f32>,
+    zs: Vector3<f32>,
     rect: Rect2,
 }
 
 impl Triangle {
     pub fn new(vertices: Triplet4) -> Option<Self> {
         let ws = Vector3::new(vertices[0].w, vertices[1].w, vertices[2].w);
+        let zs = Vector3::new(vertices[0].z, vertices[1].z, vertices[2].z);
 
         let vertices: [Vector3<f32>; 3] =
             [vertices[0].into(), vertices[1].into(), vertices[2].into()];
@@ -153,6 +155,7 @@ impl Triangle {
                 vertices,
                 segments,
                 ws,
+                zs,
                 rect,
             })
         } else {
@@ -290,7 +293,6 @@ pub struct TriangleIter {
     crosses: [LinearInterpolator; 3],
     start: Vector2<f32>,
     triangle: Triangle,
-    zs: Vector3<f32>,
 }
 
 impl TriangleIter {
@@ -327,11 +329,6 @@ impl TriangleIter {
             crosses,
             start,
             triangle,
-            zs: Vector3::new(
-                triangle.vertices[0].z,
-                triangle.vertices[1].z,
-                triangle.vertices[2].z,
-            ),
         }
     }
 }
@@ -355,16 +352,17 @@ impl Iterator for TriangleIter {
 
             let mut coefs = Vector3::new(cof0, cof1, cof2);
 
-            if cof0 > 0.0 && cof1 > 0.0 && cof2 > 0.0 {
-                coefs.x /= self.triangle.ws.x;
-                coefs.y /= self.triangle.ws.y;
-                coefs.z /= self.triangle.ws.z;
+            coefs.x /= self.triangle.ws.x;
+            coefs.y /= self.triangle.ws.y;
+            coefs.z /= self.triangle.ws.z;
+
+            if coefs.x > 0.0 && coefs.y > 0.0 && coefs.z > 0.0 {
 
                 let sum = coefs.x + coefs.y + coefs.z;
 
                 coefs = coefs / sum;
 
-                let z = coefs * self.zs;
+                let z = coefs * self.triangle.zs;
 
                 Some(Fragment {
                     position: Vector3::<f32>::new(position.x, position.y, z),
