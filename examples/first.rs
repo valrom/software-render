@@ -11,20 +11,13 @@ use software_render::math::vectors::Vector4;
 use software_render::raster::Triangle;
 use software_render::window_state::WindowState;
 use std::collections::HashSet;
-use std::rc::Rc;
-use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::WindowAttributes;
-use winit::window::{Window, WindowId};
 
 use software_render::math::vectors::Vector2;
 
 struct MyGame {
-    state: Option<WindowState>,
-
     framebuffer: Buffer<u32>,
     depth: Buffer<f32>,
 
@@ -101,6 +94,7 @@ impl MyGame {
             pub uv: Vector2<f32>,
         }
 
+        #[allow(dead_code)]
         impl Vertex {
             fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, u: f32, v: f32) -> Self {
                 Self {
@@ -258,7 +252,7 @@ impl MyGame {
                         uvs.y * self.image.height() as f32,
                     );
 
-                    let Some(texture) = self
+                    let Some(_texture) = self
                         .image
                         .get_pixel_checked(texture.x as u32, texture.y as u32)
                     else {
@@ -282,8 +276,7 @@ fn main() {
 
     let image = open("./textures/brick.png").unwrap().into_rgb8();
 
-    let mut game = Box::new(MyGame {
-        state: None,
+    let game = Box::new(MyGame {
         scale: 2,
         framebuffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
         depth: Buffer::new(Vector2::new(100, 100), 0.0).unwrap(),
