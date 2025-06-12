@@ -2,23 +2,28 @@ use image::open;
 use image::ImageBuffer;
 use image::Rgb;
 use software_render::buffers::Buffer;
+use software_render::color::Color;
+use software_render::game::App;
+use software_render::game::Game;
 use software_render::math::matrices::Matrix4;
 use software_render::math::vectors::Vector3;
 use software_render::math::vectors::Vector4;
 use software_render::raster::Triangle;
+use software_render::window_state::WindowState;
 use std::collections::HashSet;
 use std::rc::Rc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
+use winit::event_loop;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowAttributes;
 use winit::window::{Window, WindowId};
 
 use software_render::math::vectors::Vector2;
 
-struct App {
-    state: Option<State>,
+struct MyGame {
+    state: Option<WindowState>,
 
     framebuffer: Buffer<u32>,
     depth: Buffer<f32>,
@@ -26,131 +31,18 @@ struct App {
     time: std::time::SystemTime,
     image: ImageBuffer<Rgb<u8>, Vec<u8>>,
     scale: u32,
+
+    events: Vec<WindowEvent>,
+
+    should_close: bool,
+    resize: Option<PhysicalSize<u32>>,
 }
 
-struct State {
-    window: Rc<Window>,
-    surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
-    size: PhysicalSize<u32>,
-}
-
-impl State {
-    fn new(window: &Rc<Window>) -> Option<Self> {
-        let context = softbuffer::Context::new(window.clone()).ok()?;
-        let mut surface = softbuffer::Surface::new(&context, window.clone()).ok()?;
-        let size = PhysicalSize::<u32>::new(300, 300);
-
-        surface
-            .resize(
-                size.width.try_into().unwrap(),
-                size.height.try_into().unwrap(),
-            )
-            .ok()?;
-        Some(Self {
-            window: window.clone(),
-            surface,
-            size,
-        })
-    }
-
-    fn resize(&mut self, size: PhysicalSize<u32>) {
-        self.size = size;
-        self.surface
-            .resize(
-                size.width.try_into().unwrap(),
-                size.height.try_into().unwrap(),
-            )
-            .unwrap();
-    }
-
-    pub fn draw(&mut self, framebuffer: &Buffer<u32>, scale: u32) {
-        let mut buffer = self.surface.buffer_mut().unwrap();
-
-        for y in 0..std::cmp::min(framebuffer.height() * scale, self.size.height) {
-            for x in 0..std::cmp::min(framebuffer.width() * scale, self.size.width) {
-                buffer[(self.size.width * y + x) as usize] =
-                    framebuffer.get_pixel(Vector2::new(x as i32, y as i32) / scale as i32)
-            }
-        }
-
-        buffer.present().unwrap();
-        self.window.request_redraw();
-    }
-}
-
-#[derive(Copy, Clone)]
-struct Color {
-    r: f32,
-    g: f32,
-    b: f32,
-    a: f32,
-}
-
-#[allow(dead_code)]
-impl Color {
-    fn from_rgb(r: f32, g: f32, b: f32) -> Self {
-        Self { r, g, b, a: 1.0 }
-    }
-
-    fn to_u32(self) -> u32 {
-        0x01000000 * ((self.a * 255.0).trunc() as u32 % 256)
-            + 0x00010000 * ((self.r * 255.0).trunc() as u32 % 256)
-            + 0x00000100 * ((self.g * 255.0).trunc() as u32 % 256)
-            + 0x00000001 * ((self.b * 255.0).trunc() as u32 % 256)
-    }
-
-    fn scale(self, factor: f32) -> Self {
-        Self {
-            a: self.a * factor,
-            b: self.b * factor,
-            r: self.r * factor,
-            g: self.g * factor,
-        }
-    }
-}
-
-impl From<Rgb<u8>> for Color {
-    fn from(rgb: Rgb<u8>) -> Self {
-        Self::from_rgb(
-            rgb[0] as f32 / 255.0,
-            rgb[1] as f32 / 255.0,
-            rgb[2] as f32 / 255.0,
-        )
-    }
-}
-
-impl From<Color> for Vector3<f32> {
-    fn from(color: Color) -> Self {
-        Self::new(color.r, color.g, color.b)
-    }
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = make_window(event_loop);
-        self.state = State::new(&window);
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        let taken_state = self.state.take();
-
-        let Some(mut state) = taken_state else {
-            return;
-        };
-
-        if id != state.window.id() {
-            self.state.replace(state);
-            return;
-        }
-
+impl Game for MyGame {
+    fn new_event(&mut self, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-
-            WindowEvent::RedrawRequested => {
-                self.draw();
-                state.draw(&self.framebuffer, self.scale);
+                self.should_close = true;
             }
 
             WindowEvent::Resized(size) => {
@@ -158,23 +50,46 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let size_vec = Vector2::new(
-                    (size.width / self.scale) as i32,
-                    (size.height / self.scale) as i32,
-                );
-                state.resize(size);
-                self.framebuffer = Buffer::new(size_vec, 0xFFFFFFFFu32).unwrap();
-                self.depth = Buffer::new(size_vec, -1.0).unwrap();
+                self.resize = Some(size);
             }
 
-            _ => (),
+            _ => self.events.push(event),
+        }
+    }
+
+    fn clear_events(&mut self) {
+        self.events.clear();
+    }
+
+    fn update(&mut self, event_loop: &ActiveEventLoop, state: &mut WindowState) {
+        if self.should_close {
+            event_loop.exit();
         }
 
-        self.state.replace(state);
+        if let Some(size) = self.resize {
+            self.resize(state, size);
+        }
+
+        self.draw();
+        state.draw(&self.framebuffer, self.scale);
     }
 }
 
-impl App {
+impl MyGame {
+    fn resize(&mut self, state: &mut WindowState, size: PhysicalSize<u32>) {
+        let size_vec = Vector2::new(
+            (size.width / self.scale) as i32,
+            (size.height / self.scale) as i32,
+        );
+
+        state.resize(size);
+
+        self.framebuffer = Buffer::new(size_vec, 0xFFFFFFFFu32).unwrap();
+        self.depth = Buffer::new(size_vec, -1.0).unwrap();
+    }
+}
+
+impl MyGame {
     fn draw(&mut self) {
         self.framebuffer.clear(0xFFFFFFFF);
         self.depth.clear(-1.0);
@@ -367,17 +282,19 @@ fn main() {
 
     let image = open("./textures/brick.png").unwrap().into_rgb8();
 
-    let mut app = App {
+    let mut game = Box::new(MyGame {
         state: None,
         scale: 2,
         framebuffer: Buffer::new(Vector2::new(100, 100), 0xFFFFFFu32).unwrap(),
         depth: Buffer::new(Vector2::new(100, 100), 0.0).unwrap(),
         time: std::time::SystemTime::now(),
         image,
-    };
-    event_loop.run_app(&mut app).unwrap();
-}
+        events: Vec::new(),
+        resize: None,
+        should_close: false,
+    });
 
-fn make_window(elwt: &ActiveEventLoop) -> Rc<Window> {
-    Rc::new(elwt.create_window(WindowAttributes::default()).unwrap())
+    let mut app = App::new(game);
+
+    event_loop.run_app(&mut app).unwrap();
 }
