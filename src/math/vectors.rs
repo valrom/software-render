@@ -68,6 +68,12 @@ impl<T: Number<T>> Div<T> for Vector2<T> {
     }
 }
 
+impl<T: Number<T>> From<(T, T)> for Vector2<T> {
+    fn from(value: (T, T)) -> Self {
+        Vector2::new(value.0, value.1)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Vector3<T: Number<T>> {
     pub x: T,

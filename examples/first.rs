@@ -55,6 +55,8 @@ impl Game for MyGame {
     }
 
     fn update(&mut self, event_loop: &ActiveEventLoop, state: &mut WindowState) {
+        println!("{:?}", self.events);
+
         if self.should_close {
             event_loop.exit();
         }
