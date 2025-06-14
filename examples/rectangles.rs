@@ -2,6 +2,7 @@ use std::f64::consts::PI;
 
 use software_render::{
     buffers::Buffer,
+    drawing::line::Line,
     game::{App, Game},
     math::vectors::Vector2,
     window_state::WindowState,
@@ -74,7 +75,7 @@ impl MyGame {
         //     }
         // }
 
-        let lines = [XLine::new(self.mouse_position, center)];
+        let lines = [Line::new(self.mouse_position, center)];
         let render_lines = lines.into_iter().filter_map(|l| l);
 
         for line in render_lines {
@@ -142,118 +143,6 @@ impl Game for MyGame {
 
         self.render();
         state.draw(&self.framebuffer, self.scale);
-    }
-}
-
-struct XLine {
-    start: Vector2<i32>,
-    end: Vector2<i32>,
-    delta: Vector2<i32>,
-    position: Vector2<i32>,
-    increment: Vector2<i32>,
-    is_x_main: bool,
-    module: i32,
-}
-
-impl XLine {
-    fn new(start: Vector2<i32>, end: Vector2<i32>) -> Option<Self> {
-        let (start, end) = if start.x < end.x {
-            (start, end)
-        } else {
-            (end, start)
-        };
-
-        let delta = end - start;
-
-        let is_x_main = delta.x.abs() >= delta.y.abs();
-
-        Some(Self {
-            start,
-            end,
-            delta,
-            position: Vector2::new(0, 0),
-            increment: Vector2::new(delta.x.signum(), delta.y.signum()),
-            module: 0,
-            is_x_main,
-        })
-    }
-}
-
-impl Iterator for XLine {
-    type Item = Vector2<i32>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.position.x.abs() >= self.delta.x.abs()
-            || self.position.y.abs() >= self.delta.y.abs()
-        {
-            return None;
-        }
-
-        let output = self.position + self.start;
-
-        if self.is_x_main {
-            self.position.x += self.increment.x;
-
-            self.module += self.delta.y.abs();
-
-            if self.module >= self.delta.x.abs() {
-                self.position.y += self.increment.y;
-                self.module -= self.delta.x.abs();
-            }
-        } else {
-            self.position.y += self.increment.y;
-
-            self.module += self.delta.x.abs();
-
-            if self.module > self.delta.y.abs() {
-                self.position.x += self.increment.x;
-                self.module %= self.delta.y.abs();
-            }
-        }
-
-        Some(output)
-    }
-}
-
-struct Rect {
-    start: Vector2<i32>,
-    end: Vector2<i32>,
-    position: i32,
-    position_end: i32,
-    delta: Vector2<i32>,
-}
-
-impl Rect {
-    fn new(start: Vector2<i32>, end: Vector2<i32>) -> Option<Self> {
-        let delta = end - start;
-
-        if delta.x < 1 || delta.y < 1 {
-            return None;
-        }
-
-        Some(Self {
-            start,
-            end,
-            position: 0,
-            position_end: delta.x * delta.y,
-            delta,
-        })
-    }
-}
-
-impl Iterator for Rect {
-    type Item = Vector2<i32>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.position >= self.position_end {
-            return None;
-        }
-
-        let coords = Vector2::new(self.position % self.delta.y, self.position / self.delta.y);
-
-        self.position += 1;
-
-        Some(self.start + coords)
     }
 }
 
