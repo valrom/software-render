@@ -19,6 +19,8 @@ struct MyGame {
     resize: Option<PhysicalSize<u32>>,
 
     framebuffer: Buffer<u32>,
+
+    mouse_position: Vector2<i32>,
 }
 
 impl MyGame {
@@ -29,6 +31,7 @@ impl MyGame {
             resize: None,
             scale: 4,
             framebuffer: Buffer::new((300, 300).into(), 0xFFFFFFFF).unwrap(),
+            mouse_position: Vector2::new(0, 0),
         }
     }
 
@@ -50,28 +53,28 @@ impl MyGame {
             self.framebuffer.height() as i32 / 2,
         );
 
-        let side = 20;
+        let side = 1;
 
-        if center.x + side >= self.framebuffer.width() as i32
-            || center.y + side >= self.framebuffer.height() as i32
-        {
-            return;
-        }
+        // if center.x + side >= self.framebuffer.width() as i32
+        //     || center.y + side >= self.framebuffer.height() as i32
+        // {
+        //     return;
+        // }
 
-        let rects = [Rect::new(
-            (center.x - side, center.y - side).into(),
-            (center.x + side, center.y + side).into(),
-        )];
+        // let rects = [Rect::new(
+        //     (center.x - side, center.y - side).into(),
+        //     (center.x + side, center.y + side).into(),
+        // )];
 
-        let render_rects = rects.into_iter().filter_map(|r| r);
+        // let render_rects = rects.into_iter().filter_map(|r| r);
 
-        for rect in render_rects {
-            for pixel in rect {
-                self.framebuffer.set_pixel(pixel, 0xFFFF00FF);
-            }
-        }
+        // for rect in render_rects {
+        //     for pixel in rect {
+        //         self.framebuffer.set_pixel(pixel, 0xFFFF00FF);
+        //     }
+        // }
 
-        let lines = [XLine::new(Vector2::new(0, 0), center)];
+        let lines = [XLine::new(self.mouse_position, center)];
         let render_lines = lines.into_iter().filter_map(|l| l);
 
         for line in render_lines {
@@ -119,6 +122,24 @@ impl Game for MyGame {
             self.resize(state, size);
         }
 
+        for event in self.events.iter() {
+            if let WindowEvent::CursorMoved { position, .. } = event {
+                self.mouse_position = Vector2::new(
+                    (position.x / self.scale as f64) as i32,
+                    (position.y / self.scale as f64) as i32,
+                );
+            };
+        }
+
+        self.mouse_position.x = self
+            .mouse_position
+            .x
+            .clamp(0, self.framebuffer.width() as i32 - 1);
+        self.mouse_position.y = self
+            .mouse_position
+            .y
+            .clamp(0, self.framebuffer.height() as i32 - 1);
+
         self.render();
         state.draw(&self.framebuffer, self.scale);
     }
@@ -130,6 +151,7 @@ struct XLine {
     delta: Vector2<i32>,
     position: Vector2<i32>,
     increment: Vector2<i32>,
+    is_x_main: bool,
     module: i32,
 }
 
@@ -143,9 +165,7 @@ impl XLine {
 
         let delta = end - start;
 
-        if delta.x < delta.y.abs() {
-            return None;
-        }
+        let is_x_main = delta.x.abs() >= delta.y.abs();
 
         Some(Self {
             start,
@@ -154,6 +174,7 @@ impl XLine {
             position: Vector2::new(0, 0),
             increment: Vector2::new(delta.x.signum(), delta.y.signum()),
             module: 0,
+            is_x_main,
         })
     }
 }
@@ -162,18 +183,32 @@ impl Iterator for XLine {
     type Item = Vector2<i32>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.position.x > self.delta.x {
+        if self.position.x.abs() >= self.delta.x.abs()
+            || self.position.y.abs() >= self.delta.y.abs()
+        {
             return None;
         }
-        let output = self.position;
 
-        self.position.x += self.increment.x;
+        let output = self.position + self.start;
 
-        self.module += self.delta.y.abs();
+        if self.is_x_main {
+            self.position.x += self.increment.x;
 
-        if self.module > self.delta.x.abs() {
+            self.module += self.delta.y.abs();
+
+            if self.module >= self.delta.x.abs() {
+                self.position.y += self.increment.y;
+                self.module -= self.delta.x.abs();
+            }
+        } else {
             self.position.y += self.increment.y;
-            self.module %= self.delta.x.abs();
+
+            self.module += self.delta.x.abs();
+
+            if self.module > self.delta.y.abs() {
+                self.position.x += self.increment.x;
+                self.module %= self.delta.y.abs();
+            }
         }
 
         Some(output)
